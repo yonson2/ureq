@@ -78,6 +78,8 @@ pub struct Response {
     pub(crate) reader: Box<dyn Read + Send + Sync + 'static>,
     /// The socket address of the server that sent the response.
     pub(crate) remote_addr: SocketAddr,
+    /// The socket address of the client that sent the request.
+    pub(crate) local_addr: SocketAddr,
     /// The redirect history of this response, if any. The history starts with
     /// the first response received and ends with the response immediately
     /// previous to this one.
@@ -230,6 +232,11 @@ impl Response {
     /// The socket address of the server that sent the response.
     pub fn remote_addr(&self) -> SocketAddr {
         self.remote_addr
+    }
+
+    /// The local address the request was made from.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
     /// Turn this response into a `impl Read` of the body.
@@ -533,6 +540,12 @@ impl Response {
     /// assert_eq!(resp.status(), 401);
     pub(crate) fn do_from_stream(stream: Stream, unit: Unit) -> Result<Response, Error> {
         let remote_addr = stream.remote_addr;
+
+        let local_addr = match stream.socket() {
+            Some(sock) => sock.local_addr().map_err(Error::from)?,
+            None => std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(127, 0, 0, 1), 0).into(),
+        };
+
         //
         // HTTP/1.1 200 OK\r\n
         let mut stream = stream::DeadlineStream::new(stream, unit.deadline);
@@ -581,6 +594,7 @@ impl Response {
             headers,
             reader,
             remote_addr,
+            local_addr,
             history: vec![],
         };
         Ok(response)
